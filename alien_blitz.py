@@ -8,32 +8,39 @@ try:
 except ImportError:
     SOUND = False
 
+# Strip all globals if reasonable
+
 NUM_TOWERS = 20
 MAX_TOWER_HEIGHT = 10
-CURSOR_SIZE = 20
-PLANE_DELAY = 40
-BOMB_DELAY = 40
+GAME_DELAY = 20
+PLANE_DX = 12
+BOMB_DY = -20
 WIDTH = 800
 HEIGHT = 600
+GAME_AREA_WIDTH = WIDTH - 50
+GAME_AREA_HEIGHT = HEIGHT - 50
 cell_colors = ["black", "dark green", "brown"]
 
 
+def game_loop():
+    move_plane()
+    if bomb_dropping:
+        __continue_bomb_drop()
+    screen.update()
+    turtle.ontimer(game_loop, GAME_DELAY)
+
+
 def move_plane():
-    global playing
     new_pos = (plane.xcor(), plane.ycor())
-    if new_pos[0] > width // 2:
-        plane.goto(- width // 2, plane.ycor() - size)
+    if new_pos[0] > GAME_AREA_WIDTH // 2:
+        plane.goto(- GAME_AREA_WIDTH // 2, plane.ycor() - cell_size)
     else:
-        plane.goto(plane.xcor() + 12, plane.ycor())
+        plane.goto(plane.xcor() + PLANE_DX, plane.ycor())
 
     if check_plane_tower_collision():
-        playing = False
         restart(new_level=False)
     elif check_player_wins_level():
         restart(new_level=True)
-    else:
-        screen.update()
-        turtle.ontimer(move_plane, PLANE_DELAY)
 
 
 def check_player_wins_level():
@@ -52,7 +59,7 @@ def player_wins_level():
 def check_plane_tower_collision():
     for tower in towers:
         for cell in tower:
-            if plane.distance(cell) <= size / 2 + 10:  # Half cell size + half plane height
+            if plane.distance(cell) <= cell_size / 2 + 10:  # Half cell size + half plane height
                 plane_tower_collision()
                 return True
     return False
@@ -67,21 +74,20 @@ def plane_tower_collision():
 
 
 def check_bomb_tower_collision():
-    if playing:
+    if bomb_dropping:
         for tower in towers:
             for cell in tower:
-                if bomb.distance(cell) <= size / 2 + 5:  # Half cell size + half bomb size
+                if bomb.distance(cell) <= cell_size / 2 + 5:  # Half cell size + half bomb size
                     bomb_tower_collision(cell)
                     return True
         return False
 
 
 def bomb_tower_collision(cell):
-    global score, high_score
+    global score, high_score  # Needed as values modified in this function.
     if SOUND:
         playsound.playsound("bombed.wav", False)
     cell.setx(-1000)
-    cell.clear()
     score += 10
     if score > high_score:
         high_score = score
@@ -89,24 +95,24 @@ def bomb_tower_collision(cell):
 
 
 def start_bomb_drop():
+    global bomb_dropping  # Needed as value modified in this function.
     # Prevent further key presses until drop is finished tp prevent event stacking.
     screen.onkey(None, "space")
     bomb.goto(plane.xcor(), plane.ycor())
     bomb.showturtle()
-    __continue_bomb_drop()
+    bomb_dropping = True
 
 
 def __continue_bomb_drop():
-    global playing
-    bomb.goto(bomb.xcor(), bomb.ycor() - 12)
-    if check_bomb_tower_collision() or bomb.ycor() < - height // 2 or not playing:
+    bomb.goto(bomb.xcor(), bomb.ycor() + BOMB_DY)
+    if check_bomb_tower_collision() or bomb.ycor() < - GAME_AREA_HEIGHT // 2:
         stop_bomb_drop()
-    else:
-        turtle.ontimer(__continue_bomb_drop, BOMB_DELAY)
 
 
 def stop_bomb_drop():
+    global bomb_dropping  # Needed as value modified in this function.
     bomb.hideturtle()
+    bomb_dropping = False
     # It's now safe to allow another bomb drop, so rebind keyboard event.
     screen.onkey(start_bomb_drop, "space")
 
@@ -116,44 +122,47 @@ def update_score_display():
     pen.write("Score:{:2} High Score:{:2}".format(score, high_score), align="center", font=("Courier", 24, "normal"))
 
 
-def get_towers():
+def get_towers(offset):
     result = []
     for col in range(-NUM_TOWERS // 2, NUM_TOWERS // 2):
         tower = []
         for level in range(random.randrange(1, MAX_TOWER_HEIGHT + 1)):
             block = turtle.Turtle(shape="square")
-            block.shapesize(size / CURSOR_SIZE)
+            block.shapesize(cell_size / 20)  # 20 is the default size of the "square" shape.
             block.color(random.choice(cell_colors))
             block.penup()
-            block.goto(col * size + offset, - height // 2 + level * size + offset)
+            block.goto(col * cell_size + offset, - GAME_AREA_HEIGHT // 2 + level * cell_size + offset)
             tower.append(block)
         result.append(tower)
     return result
 
 
-def setup():
-    global screen, plane, bomb, pen, high_score, size, offset, height, width, score
-    # Screen
+def restart(new_level=False):
+    global screen, plane, bomb, pen, cell_size
+    global score, towers, winning_score, bomb_dropping
+
+    # Fixed screen values
     screen = turtle.Screen()
     screen.title("Alien Blitz")
     screen.setup(WIDTH, HEIGHT)
+
+    # MISC.
+    cell_size = GAME_AREA_WIDTH / NUM_TOWERS  # Size of tower cells in pixels
+    offset = (NUM_TOWERS % 2) * cell_size / 2 + cell_size / 2  # Center even and odd cells
+
+    # Screen values which need resetting each level/game
+    screen.clear()
     screen.bgcolor("dark blue")
     screen.listen()
     screen.onkey(start_bomb_drop, "space")
     screen.tracer(0)
 
-    # MISC.
-    width = screen.window_width() - 50
-    height = screen.window_height() - 50
-    size = width / NUM_TOWERS  # Size of tower cells in pixels
-    offset = (NUM_TOWERS % 2) * size / 2 + size / 2  # Center even and odd cells
-
     # Plane
     plane = turtle.Turtle(shape="triangle", visible=False)
     plane.color("yellow")
-    plane.shapesize(20 / CURSOR_SIZE, 40 / CURSOR_SIZE)
+    plane.shapesize(1, 2)
     plane.penup()
-    plane.goto(- width // 2, height // 2)
+    plane.goto(- GAME_AREA_WIDTH // 2, GAME_AREA_HEIGHT // 2)
     plane.showturtle()
 
     # Bomb
@@ -162,6 +171,7 @@ def setup():
     bomb.color("red")
     bomb.shapesize(0.5)
     bomb.penup()
+    bomb_dropping = False
 
     # Score Display
     pen = turtle.Turtle()
@@ -169,40 +179,30 @@ def setup():
     pen.color("white")
     pen.penup()
     pen.goto(0, 260)
+    score = 0
+    update_score_display()
 
-    # Initialise high score
-    high_score = 0
+    # Build new towers
+    towers = get_towers(offset)
 
-
-def restart(new_level=False):
-    global score, high_score, winning_score, towers, playing
-    #  Towers list does not exist on first call.
-    try:
-        for tower in towers:
-            for cell in tower:
-                cell.setx(-1000)
-                cell.clear()
-    except NameError:
-        pass
-    plane.color("yellow")
-    towers = get_towers()
     # Here we handle the score for different scenarios for restarting the game - crashed plane or completed level.
     if not new_level:
         score = 0
         winning_score = sum(len(row) for row in towers) * 10
     else:
         winning_score += sum(len(row) for row in towers) * 10
-    update_score_display()
-    plane.goto(- width // 2, height // 2)
-    bomb.goto(- width // 2, height // 2)
-    playing = True
-    screen.update()
-    move_plane()
+
+    # Initial positions for plane and bomb.
+    plane.goto(- GAME_AREA_WIDTH // 2, GAME_AREA_HEIGHT // 2)
+    bomb.goto(- GAME_AREA_WIDTH // 2, GAME_AREA_HEIGHT // 2)
+    # print(len(screen.turtles()))  # Check no memory leak.
 
 
 def main():
-    setup()
+    global high_score
+    high_score = 0
     restart()
+    game_loop()
 
 
 if __name__ == "__main__":
