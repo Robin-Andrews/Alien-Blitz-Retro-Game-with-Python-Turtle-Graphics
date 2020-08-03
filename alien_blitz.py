@@ -8,7 +8,6 @@ try:
 except ImportError:
     SOUND = False
 
-# Strip all globals if reasonable
 
 NUM_TOWERS = 20
 MAX_TOWER_HEIGHT = 10
